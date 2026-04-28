@@ -3,7 +3,8 @@ import yfinance as yf
 import pandas as pd
 
 # --- Page Config ---
-st.set_page_config(page_title="Shariah Stock Screener", layout="centered")
+# Changed layout to "wide" to comfortably fit 4 columns of metrics
+st.set_page_config(page_title="Shariah Stock Screener", layout="wide")
 st.title("🕌 BSE/NSE Shariah Compliance Screener")
 st.markdown("Automatically calculate AAOIFI financial ratios for Indian equities.")
 
@@ -19,7 +20,6 @@ else:
     yf_ticker = f"{ticker_input}.BO"
 
 # --- Fetch Data Function ---
-# Added 'financials' to fetch the income statement for the 5% revenue rule
 @st.cache_data(ttl=3600) 
 def fetch_financials(ticker_symbol):
     try:
@@ -59,20 +59,31 @@ if st.sidebar.button("Analyze Stock"):
                 cash_and_equiv = recent_bs.get("Cash And Cash Equivalents", 0)
                 short_term_investments = recent_bs.get("Other Short Term Investments", 0)
                 
+                # NEW: Extract long term investments to help calculate total interest-bearing securities
+                long_term_investments = recent_bs.get("Long Term Investments", 0)
+                
                 total_revenue = recent_inc.get("Total Revenue", 0)
                 interest_income = recent_inc.get("Interest Income", 0)
                 
+                # Combine cash and short term investments for the Cash ratio
                 total_cash_investments = cash_and_equiv + short_term_investments
+                
+                # NEW: Combine short and long term investments for the Securities ratio
+                interest_bearing_securities = short_term_investments + long_term_investments
                 
                 if total_assets > 0 and total_revenue > 0:
                     # --- Calculate Ratios ---
                     debt_to_assets = (total_debt / total_assets) * 100
                     cash_to_assets = (total_cash_investments / total_assets) * 100
+                    
+                    # NEW: Calculate the Securities to Assets ratio
+                    securities_to_assets = (interest_bearing_securities / total_assets) * 100
+                    
                     interest_to_revenue = (interest_income / total_revenue) * 100
                     
                     # --- Layout Metrics ---
-                    # Upgraded to 3 columns to include the new metric
-                    col1, col2, col3 = st.columns(3)
+                    # NEW: Upgraded to 4 columns to include the new metric
+                    col1, col2, col3, col4 = st.columns(4)
                     
                     # 1. Debt Ratio Metric
                     with col1:
@@ -90,8 +101,16 @@ if st.sidebar.button("Analyze Stock"):
                         else:
                             st.error("❌ Fail (≥ 33%)")
 
-                    # 3. Interest Income Ratio Metric
+                    # 3. Interest-Bearing Securities Ratio Metric (NEW)
                     with col3:
+                        st.metric(label="Securities / Assets", value=f"{securities_to_assets:.2f}%")
+                        if securities_to_assets < 33:
+                            st.success("✅ Pass (< 33%)")
+                        else:
+                            st.error("❌ Fail (≥ 33%)")
+
+                    # 4. Interest Income Ratio Metric
+                    with col4:
                         st.metric(label="Interest / Revenue", value=f"{interest_to_revenue:.2f}%")
                         if interest_to_revenue < 5:
                             st.success("✅ Pass (< 5%)")
@@ -100,9 +119,11 @@ if st.sidebar.button("Analyze Stock"):
                             
                     # --- Final Verdict Logic ---
                     st.divider()
-                    if debt_to_assets < 33 and cash_to_assets < 33 and interest_to_revenue < 5:
+                    
+                    # NEW: Added securities_to_assets < 33 to the final compliance check
+                    if debt_to_assets < 33 and cash_to_assets < 33 and securities_to_assets < 33 and interest_to_revenue < 5:
                         st.success("### 🟢 Financial Ratios: COMPLIANT")
-                        st.write("The company passes the AAOIFI financial screening thresholds. Verify the sector compliance to confirm overall Shariah status.")
+                        st.write("The company passes all AAOIFI financial screening thresholds. Verify the sector compliance to confirm overall Shariah status.")
                     else:
                         st.error("### 🔴 Financial Ratios: NON-COMPLIANT")
                         st.write("The company fails one or more of the AAOIFI financial screening thresholds.")
